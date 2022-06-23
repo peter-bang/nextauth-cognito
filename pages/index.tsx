@@ -4,6 +4,7 @@ import { Container } from "@mui/material";
 import tw, { styled } from "twin.macro";
 import React, { ReactElement, ReactNode } from "react";
 import Layout from "../components/Layout";
+import LoginButton from "../components/login-btn";
 
 export const getServerSideProps = async () => {
   const res = await fetch("http://localhost:3000/api/hello");
@@ -34,6 +35,7 @@ const Home: NextPageWithLayout<{ name: string }> = ({ name }) => {
       </Head>
       <main>
         <h1>안녕 여러분!!</h1>
+        <LoginButton />
       </main>
     </MainContainer>
   );

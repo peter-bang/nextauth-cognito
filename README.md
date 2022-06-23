@@ -1,21 +1,6 @@
-# Next.JS Basic configuration
+# Next.js example
 
-## Storybook
+## Next-auth cognoto login example
 
-- For components driven development.
-
-## MUI
-
-- The material UI has been used as a default UI framework
-
-## TailWindCss
-
-- The twin.macro has been used to use the tailwindcss inside the emotion styled component.
-
-## .env.local (Environment file)
-
-- For the environment variable
-
-## .npmrc & .nvmrc
-
-- To configure engine-rules.
+next-auth package has been customized using patch-package
+!!Do not use this example for your production project.

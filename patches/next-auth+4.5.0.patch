@@ -1,0 +1,234 @@
+diff --git a/node_modules/next-auth/core/lib/cookie.js b/node_modules/next-auth/core/lib/cookie.js
+index 197ecf9..cadb4d9 100644
+--- a/node_modules/next-auth/core/lib/cookie.js
++++ b/node_modules/next-auth/core/lib/cookie.js
+@@ -71,7 +71,16 @@ function defaultCookies(useSecureCookies) {
+         path: "/",
+         secure: useSecureCookies
+       }
+-    }
++    },
++    nonce: {
++      name: `${cookiePrefix}next-auth.nonce`,
++      options: {
++        httpOnly: true,
++        sameSite: "lax",
++        path: "/",
++        secure: useSecureCookies,
++      },
++    },
+   };
+ }
+ 
+diff --git a/node_modules/next-auth/core/lib/oauth/authorization-url.js b/node_modules/next-auth/core/lib/oauth/authorization-url.js
+index a90558f..291da14 100644
+--- a/node_modules/next-auth/core/lib/oauth/authorization-url.js
++++ b/node_modules/next-auth/core/lib/oauth/authorization-url.js
+@@ -13,6 +13,8 @@ var _stateHandler = require("./state-handler");
+ 
+ var _pkceHandler = require("./pkce-handler");
+ 
++var _nonceHandler = require("./nonce-handler");
++
+ async function getAuthorizationUrl(params) {
+   const {
+     options,
+@@ -74,6 +76,13 @@ async function getAuthorizationUrl(params) {
+       cookies.push(state.cookie);
+     }
+ 
++    const nonce = await (0, _nonceHandler.createNonce)(options);
++    
++    if (nonce) {
++      authorizationParams.nonce = nonce.value;
++      cookies.push(nonce.cookie);
++    }
++
+     const pkce = await (0, _pkceHandler.createPKCE)(options);
+ 
+     if (pkce) {
+diff --git a/node_modules/next-auth/core/lib/oauth/callback.js b/node_modules/next-auth/core/lib/oauth/callback.js
+index b3e01a7..769dd80 100644
+--- a/node_modules/next-auth/core/lib/oauth/callback.js
++++ b/node_modules/next-auth/core/lib/oauth/callback.js
+@@ -17,6 +17,8 @@ var _pkceHandler = require("./pkce-handler");
+ 
+ var _errors = require("../../errors");
+ 
++var _nonceHandler = require("./nonce-handler");
++
+ async function oAuthCallback(params) {
+   var _body$error, _provider$version;
+ 
+@@ -75,7 +77,9 @@ async function oAuthCallback(params) {
+ 
+     const client = await (0, _client.openidClient)(options);
+     let tokens;
+-    const checks = {};
++    const checks = {
++      nonce: undefined
++    };
+     const resCookies = [];
+     const state = await (0, _stateHandler.useState)(cookies === null || cookies === void 0 ? void 0 : cookies[options.cookies.state.name], options);
+ 
+@@ -84,6 +88,13 @@ async function oAuthCallback(params) {
+       resCookies.push(state.cookie);
+     }
+ 
++    const nonce = await (0, _nonceHandler.useNonce)(cookies === null || cookies === void 0 ? void 0 : cookies[options.cookies.nonce.name], options);
++
++    if (nonce) {
++      checks.nonce = nonce.value;
++      resCookies.push(nonce.cookie);
++    }
++
+     const codeVerifier = cookies === null || cookies === void 0 ? void 0 : cookies[options.cookies.pkceCodeVerifier.name];
+     const pkce = await (0, _pkceHandler.usePKCECodeVerifier)(codeVerifier, options);
+ 
+@@ -92,6 +103,8 @@ async function oAuthCallback(params) {
+       resCookies.push(pkce.cookie);
+     }
+ 
++
++
+     const params = { ...client.callbackParams({
+         url: `http://n?${new URLSearchParams(query)}`,
+         body,
+diff --git a/node_modules/next-auth/core/lib/oauth/nonce-handler.d.ts b/node_modules/next-auth/core/lib/oauth/nonce-handler.d.ts
+new file mode 100644
+index 0000000..d54c4e3
+--- /dev/null
++++ b/node_modules/next-auth/core/lib/oauth/nonce-handler.d.ts
+@@ -0,0 +1,17 @@
++import type { InternalOptions } from "src/lib/types";
++import type { Cookie } from "../cookie";
++/**
++ * Returns nonce if the provider supports it
++ * and saves it in a cookie */
++export declare function createNonce(options: InternalOptions<"oauth">): Promise<undefined | {
++    value: string;
++    cookie: Cookie;
++}>;
++/**
++ * Returns nonce from if the provider supports nonce,
++ * and clears the container cookie afterwards.
++ */
++export declare function useNonce(nonce: string | undefined, options: InternalOptions<"oauth">): Promise<{
++    value: string;
++    cookie: Cookie;
++} | undefined>;
+\ No newline at end of file
+diff --git a/node_modules/next-auth/core/lib/oauth/nonce-handler.js b/node_modules/next-auth/core/lib/oauth/nonce-handler.js
+new file mode 100644
+index 0000000..209d3f3
+--- /dev/null
++++ b/node_modules/next-auth/core/lib/oauth/nonce-handler.js
+@@ -0,0 +1,82 @@
++"use strict";
++
++Object.defineProperty(exports, "__esModule", {
++  value: true
++});
++exports.createNonce = createNonce;
++exports.useNonce = useNonce;
++
++var jwt = _interopRequireWildcard(require("../../../jwt"));
++
++var _openidClient = require("openid-client");
++
++function _getRequireWildcardCache(nodeInterop) { if (typeof WeakMap !== "function") return null; var cacheBabelInterop = new WeakMap(); var cacheNodeInterop = new WeakMap(); return (_getRequireWildcardCache = function (nodeInterop) { return nodeInterop ? cacheNodeInterop : cacheBabelInterop; })(nodeInterop); }
++
++function _interopRequireWildcard(obj, nodeInterop) { if (!nodeInterop && obj && obj.__esModule) { return obj; } if (obj === null || typeof obj !== "object" && typeof obj !== "function") { return { default: obj }; } var cache = _getRequireWildcardCache(nodeInterop); if (cache && cache.has(obj)) { return cache.get(obj); } var newObj = {}; var hasPropertyDescriptor = Object.defineProperty && Object.getOwnPropertyDescriptor; for (var key in obj) { if (key !== "default" && Object.prototype.hasOwnProperty.call(obj, key)) { var desc = hasPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : null; if (desc && (desc.get || desc.set)) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } newObj.default = obj; if (cache) { cache.set(obj, newObj); } return newObj; }
++
++const NONCE_MAX_AGE = 60 * 15;
++
++async function createNonce(options) {
++  var _provider$checks;
++
++  const {
++    cookies,
++    logger,
++    provider
++  } = options;
++
++  if (!((_provider$checks = provider.checks) !== null && _provider$checks !== void 0 && _provider$checks.includes("nonce"))) {
++    return;
++  }
++
++  const nonce = _openidClient.generators.nonce();
++
++  const expires = new Date();
++  expires.setTime(expires.getTime() + NONCE_MAX_AGE * 1000);
++  const encryptedNonce = await jwt.encode({ ...options.jwt,
++    maxAge: NONCE_MAX_AGE,
++    token: {
++      nonce
++    }
++  });
++  logger.debug("CREATE_ENCRYPTED_NONCE", {
++    NONCE_MAX_AGE: NONCE_MAX_AGE
++  });
++  return {
++    cookie: {
++      name: cookies.nonce.name,
++      value: encryptedNonce,
++      options: { ...cookies.nonce.options,
++        expires
++      }
++    },
++    value: nonce
++  };
++}
++
++async function useNonce(nonce, options) {
++  var _provider$checks2, _value$nonce;
++
++  const {
++    cookies,
++    provider
++  } = options;
++
++  if (!(provider !== null && provider !== void 0 && (_provider$checks2 = provider.checks) !== null && _provider$checks2 !== void 0 && _provider$checks2.includes("nonce")) || !nonce) {
++    return;
++  }
++
++  const value = await jwt.decode({ ...options.jwt,
++    token: nonce
++  });
++  return {
++    value: (_value$nonce = value === null || value === void 0 ? void 0 : value.nonce) !== null && _value$nonce !== void 0 ? _value$nonce : undefined,
++    cookie: {
++      name: cookies.nonce.name,
++      value: "",
++      options: { ...cookies.nonce.options,
++        maxAge: 0
++      }
++    }
++  };
++}
+\ No newline at end of file
+diff --git a/node_modules/next-auth/core/types.d.ts b/node_modules/next-auth/core/types.d.ts
+index ead9b75..2e4c2c5 100644
+--- a/node_modules/next-auth/core/types.d.ts
++++ b/node_modules/next-auth/core/types.d.ts
+@@ -336,6 +336,7 @@ export interface CookiesOptions {
+     csrfToken: CookieOption;
+     pkceCodeVerifier: CookieOption;
+     state: CookieOption;
++    nonce: CookieOption;
+ }
+ /**
+  *  The various event callbacks you can register for from next-auth
+diff --git a/node_modules/next-auth/providers/oauth.d.ts b/node_modules/next-auth/providers/oauth.d.ts
+index 495f8e3..afccc4b 100644
+--- a/node_modules/next-auth/providers/oauth.d.ts
++++ b/node_modules/next-auth/providers/oauth.d.ts
+@@ -4,7 +4,7 @@ import type { AuthorizationParameters, CallbackParamsType, Issuer, ClientMetadat
+ import type { JWK } from "jose";
+ declare type Client = InstanceType<Issuer["Client"]>;
+ export type { OAuthProviderType } from "./oauth-types";
+-declare type ChecksType = "pkce" | "state" | "none";
++declare type ChecksType = "pkce" | "state" | "both" | "none" | "nonce";
+ export declare type OAuthChecks = OpenIDCallbackChecks | OAuthCallbackChecks;
+ declare type PartialIssuer = Partial<Pick<IssuerMetadata, "jwks_endpoint" | "issuer">>;
+ declare type UrlParams = Record<string, unknown>;

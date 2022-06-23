@@ -13,7 +13,8 @@
     "start": "next start",
     "lint": "next lint",
     "storybook": "start-storybook -p 6006 -s ./public",
-    "build-storybook": "build-storybook s public"
+    "build-storybook": "build-storybook s public",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@emotion/babel-plugin": "^11.9.2",
@@ -25,6 +26,10 @@
     "babel-plugin-macros": "^3.1.0",
     "cssnano": "^5.1.11",
     "next": "^12.1.7-canary.38",
+    "next-auth": "^4.5.0",
+    "openid-client": "^5.1.6",
+    "patch-package": "^6.4.7",
+    "postinstall-postinstall": "^2.1.0",
     "react": "^18.1.0",
     "react-dom": "^18.1.0",
     "twin.macro": "^2.8.2"
